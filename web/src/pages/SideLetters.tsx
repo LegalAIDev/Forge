@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { downloadDocx, get, post, type Citation } from '../api.js';
+import { downloadDocx, get, post, type Citation, type Fund } from '../api.js';
 import { SectionTitle, Button, CitationRow, ErrorNote, ThinkingCard } from '../components.js';
 
 interface Drafts {
@@ -10,6 +10,14 @@ interface Drafts {
   }>;
   termRetrieval: Array<{ term: string; suggestedTier: string }>;
   citationsVerified: { total: number; verified: number };
+}
+
+interface Executed {
+  documentId: string;
+  sideLetterId: string;
+  title: string;
+  provisionCount: number;
+  obligations: Array<{ id: string; type: string; summary: string; verified: boolean }>;
 }
 
 const TIER_DOT: Record<string, string> = {
@@ -29,25 +37,41 @@ const DEFAULT_TERMS = `Excusal from investments in EU-sanctioned or sub-investme
 Annual ESG report on the Invest Europe template`;
 
 export function SideLetters() {
+  const [funds, setFunds] = useState<Fund[]>([]);
+  const [fundId, setFundId] = useState('fund-3');
   const [investors, setInvestors] = useState<Array<{ id: string; name: string; type: string }>>([]);
   const [investorId, setInvestorId] = useState('inv-norrland');
   const [terms, setTerms] = useState(DEFAULT_TERMS);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Drafts | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [executing, setExecuting] = useState<string | null>(null);
+  const [executed, setExecuted] = useState<Executed | null>(null);
 
   useEffect(() => {
-    get<Array<{ id: string; name: string; type: string }>>('/investors').then(setInvestors).catch(() => {});
+    get<Fund[]>('/funds')
+      .then((all) => {
+        setFunds(all);
+        if (all.length > 0 && !all.some((f) => f.id === 'fund-3')) setFundId(all[0].id);
+      })
+      .catch(() => {});
+    get<Array<{ id: string; name: string; type: string }>>('/investors')
+      .then((all) => {
+        setInvestors(all);
+        if (all.length > 0 && !all.some((i) => i.id === 'inv-norrland')) setInvestorId(all[0].id);
+      })
+      .catch(() => {});
   }, []);
 
   const generate = async () => {
     setBusy(true);
     setError(null);
     setResult(null);
+    setExecuted(null);
     try {
       setResult(
         await post<Drafts>('/side-letters/generate', {
-          fundId: 'fund-3',
+          fundId,
           investorId,
           agreedTerms: terms.split('\n').map((t) => t.trim()).filter(Boolean),
         }),
@@ -59,30 +83,61 @@ export function SideLetters() {
     }
   };
 
+  const execute = async (draft: Drafts['drafts'][number]) => {
+    setExecuting(draft.label);
+    setError(null);
+    try {
+      setExecuted(
+        await post<Executed>('/side-letters/execute', {
+          fundId,
+          investorId,
+          draft: {
+            label: draft.label,
+            clauses: draft.clauses.map((c) => ({ term: c.term, tier: c.tier, text: c.text })),
+          },
+        }),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExecuting(null);
+    }
+  };
+
   return (
     <div>
       <SectionTitle
         eyebrow="Three ways to paper it"
-        sub="List what you've agreed with the investor. You get three complete drafts side by side — one hewing to your model language, one adapted from executed precedent, one drafted fresh — and every clause is labelled with where its words came from."
+        sub="List what you've agreed with the investor. You get three complete drafts side by side — one hewing to your model language, one adapted from executed precedent, one drafted fresh — and every clause is labelled with where its words came from. Mark the one you sign as executed and it joins the record: its clauses become precedent, its duties go on the register, and the MFN compendium sees it."
       >
         Side Letters
       </SectionTitle>
 
       <div className="grid gap-6 md:grid-cols-3">
-        <div>
-          <label className="mb-2 block text-xs font-medium text-fog">Investor</label>
-          <select value={investorId} onChange={(e) => setInvestorId(e.target.value)} className="field w-full">
-            {investors.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-          <div className="mt-4">
-            <Button onClick={generate} busy={busy}>
-              Generate three drafts
-            </Button>
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-xs font-medium text-fog">Fund</label>
+            <select value={fundId} onChange={(e) => setFundId(e.target.value)} className="field w-full">
+              {funds.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
           </div>
+          <div>
+            <label className="mb-2 block text-xs font-medium text-fog">Investor</label>
+            <select value={investorId} onChange={(e) => setInvestorId(e.target.value)} className="field w-full">
+              {investors.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button onClick={generate} busy={busy}>
+            Generate three drafts
+          </Button>
         </div>
         <div className="md:col-span-2">
           <label className="mb-2 block text-xs font-medium text-fog">What you've agreed — one term per line, plain English is fine</label>
@@ -112,7 +167,7 @@ export function SideLetters() {
               <button
                 onClick={async () => {
                   const investorName = investors.find((i) => i.id === investorId)?.name ?? 'Investor';
-                  const fund = await get<{ name: string }>('/funds/fund-3');
+                  const fund = await get<{ name: string }>(`/funds/${fundId}`);
                   await downloadDocx(
                     'side-letters',
                     { fundName: fund.name, investorName, drafts: result.drafts },
@@ -130,7 +185,7 @@ export function SideLetters() {
           </div>
           <div className="stagger grid gap-5 lg:grid-cols-3">
             {result.drafts.map((d) => (
-              <div key={d.label} className="card card-hover p-6">
+              <div key={d.label} className="card card-hover flex flex-col p-6">
                 <h3 className="text-lg font-semibold tracking-tight">{TIER_LABEL[d.label] ?? d.label}</h3>
                 <p className="mt-1 text-xs leading-relaxed text-fog">{d.rationale}</p>
                 <div className="mt-5 space-y-4">
@@ -148,9 +203,52 @@ export function SideLetters() {
                     </div>
                   ))}
                 </div>
+                {!executed && (
+                  <div className="mt-5 border-t border-black/[0.06] pt-4">
+                    <button
+                      onClick={() => execute(d)}
+                      disabled={executing !== null}
+                      className="btn-ghost w-full text-center"
+                    >
+                      {executing === d.label ? 'Filing the executed letter…' : '✓ This is the one we signed — mark as executed'}
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
+
+          {executing && <ThinkingCard label="Filing — clauses to precedent, duties to the register" />}
+
+          {executed && (
+            <div className="card-elevated animate-pop-in mt-8 p-7">
+              <h3 className="text-sm font-semibold text-bone">
+                Executed and on file — <span className="font-normal">{executed.title}</span>
+              </h3>
+              <p className="mt-1 text-xs leading-relaxed text-fog">
+                {executed.provisionCount} clause{executed.provisionCount === 1 ? '' : 's'} filed as precedent for future drafting. The MFN
+                compendium will pick this letter up on its next run.
+              </p>
+              {executed.obligations.length > 0 && (
+                <>
+                  <p className="mt-4 text-xs font-semibold text-bone">
+                    {executed.obligations.length} ongoing dut{executed.obligations.length === 1 ? 'y' : 'ies'} extracted onto the register
+                  </p>
+                  <div className="mt-2 divide-y divide-black/[0.05]">
+                    {executed.obligations.map((o) => (
+                      <div key={o.id} className="flex items-baseline gap-3 py-2 text-xs">
+                        <span className="font-mono text-[10px] uppercase tracking-wider text-ember">{o.type.replace(/_/g, ' ')}</span>
+                        <span className="flex-1 leading-relaxed">{o.summary}</span>
+                        <span className={`font-mono text-[10px] ${o.verified ? 'text-verdant' : 'text-warn'}`}>
+                          {o.verified ? '✓ verbatim' : '✗ not found'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

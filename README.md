@@ -42,8 +42,14 @@ law firm; not affiliated with anyone.
 engagement, upload your own LPA or side letter (PDF / Word / Markdown / text),
 and the engine parses it on-device, extracts every ongoing obligation, and
 checks each one verbatim against the source before it enters your register —
-then you can ask the register in plain English. The fictional Vulcan corpus
-below is just a worked example; the tool runs on real documents.
+then you can ask the register in plain English. Side letters are linked to
+their investor (auto-detected from the letter, or named at upload; unknown
+LPs are created on the spot), so the MFN compendium, deadlines, and
+attribution all run on your documents, not just the demo's. Investors and
+their comments enter through the front door too: add an LP over the API or
+UI, paste their counsel's actual mark-up, and the negotiation stage runs on
+what they really sent. The fictional Vulcan corpus below is just a worked
+example; every pipeline works the same on what you bring.
 
 The full demo arc, each stage thin but real:
 
@@ -54,13 +60,18 @@ The full demo arc, each stage thin but real:
 2. **Change assessment** — "expand the geographic mandate to emerging
    markets" → current reading, market examples from the corpus, a menu of
    drafting alternatives.
-3. **Comment triage** — investor comments organized by deal point, AI
-   suggested resolutions citing model language and the investor's own
-   precedent. Accepting or editing is a pure database write — the lawyer's
-   judgment never leaves the loop.
+3. **Comment triage** — paste LP counsel's mark-up or email and it's
+   atomized into individual deal-point comments; the queue is organized by
+   deal point with AI suggested resolutions citing model language and the
+   investor's own precedent. Accepting or editing is a pure database write —
+   the lawyer's judgment never leaves the loop.
 4. **Side letters** — agreed terms in, **three** complete drafts out,
    following the reuse hierarchy: exact model language → adapted precedent →
    fresh drafting. Every clause is color-coded by where its words came from.
+   Mark the draft you signed as **executed** and the loop closes: it's filed
+   as a closed document against its investor, its clauses become house
+   precedent, its duties are extracted onto the register, and the next MFN
+   compendium run sees it.
 5. **Obligations register** — the ontology payoff. "We have a time-sensitive
    new deal in sub-Saharan Africa — what obligations do we have?" → answer,
    urgency-ordered checklist, affected investors, every step citing the
@@ -102,7 +113,11 @@ The full demo arc, each stage thin but real:
     investor names (and derived short forms) are replaced with reversible
     placeholders using the ontology as the source of truth, then a local
     NER pass catches names the ontology has never seen. The frontier model
-    sees `[INVESTOR_3]`; your client list stays home.
+    sees `[INVESTOR_3]`; your client list stays home. Next to a masked name
+    only the investor's *type* is sent ("pension", "family office") —
+    jurisdiction is held back by default, because type + jurisdiction
+    together can re-identify an LP in a small fund
+    (`FORGE_SEND_JURISDICTION=1` to opt in).
   - **Local search** — embeddings + SQLite FTS5 hybrid retrieval. Retrieval
     always runs locally on raw data.
 

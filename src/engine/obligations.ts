@@ -28,6 +28,27 @@ const OBLIGATION_TYPES = [
 
 // ── Extraction ───────────────────────────────────────────────────────────
 
+/** Fuzzy investor-name match: normalized containment, so the model writing
+ *  "Norrland Pension" still attributes to "Norrland Pension AB". Ambiguous
+ *  partials (matching several investors) attribute to none. */
+export function matchInvestorName(
+  candidates: Array<{ id: string; name: string }>,
+  name: string | null | undefined,
+): { id: string; name: string } | null {
+  if (!name) return null;
+  const norm = (s: string): string =>
+    s.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+  const n = norm(name);
+  if (n.length < 4) return null;
+  const exact = candidates.find((c) => norm(c.name) === n);
+  if (exact) return exact;
+  const contains = candidates.filter((c) => {
+    const cn = norm(c.name);
+    return cn.includes(n) || n.includes(cn);
+  });
+  return contains.length === 1 ? contains[0] : null;
+}
+
 const extractionSchema = z.object({
   obligations: z.array(
     z.object({
@@ -79,9 +100,7 @@ export async function extractObligations(documentId: string): Promise<{ obligati
   const extracted: ExtractedObligation[] = [];
   for (const o of result.data.obligations) {
     const verified = quoteAppearsIn(doc.content, o.sourceClause, result.mappings);
-    const investor = o.investorName
-      ? investors.find((i) => i.name.toLowerCase() === o.investorName!.toLowerCase()) ?? null
-      : null;
+    const investor = matchInvestorName(investors, o.investorName);
     const id = genId('obl');
     insert.run(
       id,
@@ -140,6 +159,10 @@ const answerSchema = z.object({
 export type ObligationAnswer = z.infer<typeof answerSchema> & {
   retrievedObligationIds: string[];
   citationsVerified: { total: number; verified: number };
+  /** how many obligations the answer was synthesized FROM … */
+  consideredCount: number;
+  /** … out of how many exist in scope. The gap is disclosed, never silent. */
+  totalOnFile: number;
 };
 
 export async function answerObligationQuery(question: string, fundId?: string): Promise<ObligationAnswer> {
@@ -186,6 +209,11 @@ export async function answerObligationQuery(question: string, fundId?: string): 
   });
 
   const ids = [...new Set([...sqlRows.map((r) => r.id), ...hits.map((h) => h.id)])].slice(0, 14);
+  const totalOnFile = (
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM obligations o ${fundId ? 'WHERE o.fund_id = ?' : ''}`)
+      .get(...(fundId ? [fundId] : [])) as { n: number }
+  ).n;
   if (ids.length === 0) {
     return {
       answer: 'No obligations in the register match this question.',
@@ -194,6 +222,8 @@ export async function answerObligationQuery(question: string, fundId?: string): 
       citations: [],
       retrievedObligationIds: [],
       citationsVerified: { total: 0, verified: 0 },
+      consideredCount: 0,
+      totalOnFile,
     };
   }
 
@@ -230,5 +260,7 @@ export async function answerObligationQuery(question: string, fundId?: string): 
     ...result.data,
     retrievedObligationIds: ids,
     citationsVerified: result.citations,
+    consideredCount: ids.length,
+    totalOnFile,
   };
 }

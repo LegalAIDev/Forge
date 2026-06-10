@@ -103,6 +103,7 @@ export function Deadlines() {
   const [eventDate, setEventDate] = useState('');
   const [planBusy, setPlanBusy] = useState(false);
   const [plan, setPlan] = useState<PlannedDuty[] | null>(null);
+  const [planScope, setPlanScope] = useState<{ matchedCount: number; totalEventDuties: number } | null>(null);
 
   const [emailBusy, setEmailBusy] = useState<string | null>(null);
   const [emails, setEmails] = useState<Record<string, Email>>({});
@@ -126,12 +127,13 @@ export function Deadlines() {
     setError(null);
     setPlan(null);
     try {
-      const r = await post<{ duties: PlannedDuty[] }>('/deadlines/plan', {
+      const r = await post<{ duties: PlannedDuty[]; matchedCount: number; totalEventDuties: number }>('/deadlines/plan', {
         eventDescription: eventDesc,
         eventDate,
         fundId: fundId || undefined,
       });
       setPlan(r.duties);
+      setPlanScope({ matchedCount: r.matchedCount, totalEventDuties: r.totalEventDuties });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -245,6 +247,15 @@ export function Deadlines() {
               );
             })}
             {plan.length === 0 && <p className="text-xs text-fog">No event-triggered obligations matched this event.</p>}
+            {planScope && (
+              <p className="font-mono text-[10px] text-fog/80 tabular-nums">
+                Matched {planScope.matchedCount} of {planScope.totalEventDuties} event-triggered obligations on file
+                {planScope.matchedCount < planScope.totalEventDuties
+                  ? ' — the rest didn’t match this event’s description; reword it if something you expected is missing'
+                  : ''}
+                .
+              </p>
+            )}
           </div>
         )}
       </div>

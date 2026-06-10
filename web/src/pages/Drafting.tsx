@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { get, post, subscribeRun, type Citation, type RunEvent } from '../api.js';
+import { get, post, subscribeRun, type Citation, type Fund, type RunEvent } from '../api.js';
 import { SectionTitle, Button, CitationRow, ErrorNote, RunProgress } from '../components.js';
 
 interface DraftResult {
   documentId: string;
+  termsTotal: number;
+  termsKept: number;
   sections: Array<{ provisionId: string; heading: string; topic: string; text: string; citations: Citation[] }>;
   citationsVerified: { total: number; verified: number };
 }
@@ -15,6 +17,8 @@ interface FeedbackResult {
 }
 
 export function Drafting() {
+  const [funds, setFunds] = useState<Fund[]>([]);
+  const [fundId, setFundId] = useState('fund-3');
   const [termSheet, setTermSheet] = useState('');
   const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<RunEvent[]>([]);
@@ -25,6 +29,12 @@ export function Drafting() {
   const [revisions, setRevisions] = useState<Record<string, FeedbackResult>>({});
 
   useEffect(() => {
+    get<Fund[]>('/funds')
+      .then((all) => {
+        setFunds(all);
+        if (all.length > 0 && !all.some((f) => f.id === 'fund-3')) setFundId(all[0].id);
+      })
+      .catch(() => {});
     get<{ content: string }>('/documents/doc-f3-termsheet')
       .then((d) => setTermSheet(d.content))
       .catch(() => {});
@@ -36,7 +46,7 @@ export function Drafting() {
     setResult(null);
     setError(null);
     try {
-      const { runId } = await post<{ runId: string }>('/draft', { fundId: 'fund-3', termSheetText: termSheet });
+      const { runId } = await post<{ runId: string }>('/draft', { fundId, termSheetText: termSheet });
       subscribeRun(
         runId,
         (e) => setEvents((prev) => [...prev, e]),
@@ -75,6 +85,15 @@ export function Drafting() {
         Drafting
       </SectionTitle>
 
+      <div className="mb-3">
+        <select value={fundId} onChange={(e) => setFundId(e.target.value)} className="field py-2 text-sm">
+          {funds.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
+          ))}
+        </select>
+      </div>
       <textarea
         value={termSheet}
         onChange={(e) => setTermSheet(e.target.value)}
@@ -105,6 +124,12 @@ export function Drafting() {
               {result.citationsVerified.verified}/{result.citationsVerified.total} citations verified
             </span>
           </div>
+          {result.termsKept < result.termsTotal && (
+            <p className="mb-4 rounded-xl border border-warn/25 bg-warn/[0.06] px-4 py-2.5 text-xs leading-relaxed text-warn">
+              {result.termsTotal} commercial terms identified — the {result.termsKept} most important were drafted,{' '}
+              {result.termsTotal - result.termsKept} deferred. Run again with the remaining terms, or draft them by hand.
+            </p>
+          )}
           <div className="stagger space-y-5">
             {result.sections.map((s) => {
               const rev = revisions[s.provisionId];

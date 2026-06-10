@@ -4,17 +4,18 @@
  */
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { getDb, withDbOp } from '../db/db.js';
+import { getDb, withDbOp, genId } from '../db/db.js';
 import { config } from '../config.js';
 import * as ollama from '../ai/ollama.js';
 import { answerObligationQuery, extractObligations } from '../engine/obligations.js';
-import { listTriagedComments, suggestResolution, resolveComment } from '../engine/comments.js';
+import { listTriagedComments, suggestResolution, resolveComment, ingestComments } from '../engine/comments.js';
 import { assessChange } from '../engine/changes.js';
-import { generateSideLetterDrafts } from '../engine/side-letters.js';
+import { generateSideLetterDrafts, executeSideLetter } from '../engine/side-letters.js';
 import { startDraftingPipeline, integrateFeedback } from '../engine/drafting.js';
 import { createMatter, ingestDocument } from '../engine/intake.js';
 import { computeUpcomingDeadlines, deadlinesToICS, draftReminderEmail, planEvent } from '../engine/deadlines.js';
 import { listPrecedents } from '../engine/precedent.js';
+import { verifyCitationsDeep } from '../engine/citations.js';
 import { buildCompendium } from '../engine/mfn.js';
 import { mfnCompendiumDocx, sideLettersDocx } from '../export/docx.js';
 import {
@@ -128,6 +129,39 @@ export function registerRoutes(app: FastifyInstance): void {
     const db = getDb();
     return db.prepare(`SELECT * FROM investors ORDER BY name`).all();
   });
+
+  // Real LPs enter through the front door — no more seed-only investor list.
+  app.post<{ Body: { name: string; type?: string; jurisdiction?: string; fundId?: string; commitmentUsd?: number } }>(
+    '/api/investors',
+    async (req, reply) => {
+      const name = req.body?.name?.trim();
+      if (!name) return reply.code(400).send({ error: 'name required' });
+      const db = getDb();
+      const existing = db.prepare(`SELECT id FROM investors WHERE lower(name) = lower(?)`).get(name);
+      if (existing) return reply.code(409).send({ error: 'investor already exists', id: (existing as { id: string }).id });
+      const id = genId('inv');
+      try {
+        db.transaction(() => {
+          db.prepare(`INSERT INTO investors (id, name, type, jurisdiction) VALUES (?, ?, ?, ?)`).run(
+            id,
+            name,
+            req.body.type?.trim() || 'other',
+            req.body.jurisdiction?.trim() || '',
+          );
+          if (req.body.fundId) {
+            db.prepare(`INSERT INTO commitments (fund_id, investor_id, amount_usd) VALUES (?, ?, ?)`).run(
+              req.body.fundId,
+              id,
+              req.body.commitmentUsd ?? 0,
+            );
+          }
+        })();
+      } catch (err) {
+        return reply.code(400).send({ error: errMessage(err) });
+      }
+      return db.prepare(`SELECT * FROM investors WHERE id = ?`).get(id);
+    },
+  );
 
   app.get<{ Params: { id: string } }>('/api/documents/:id', async (req, reply) => {
     const db = getDb();
@@ -264,6 +298,35 @@ export function registerRoutes(app: FastifyInstance): void {
     },
   );
 
+  // Closing the loop: a chosen draft becomes an executed document, its
+  // clauses become house precedent, its obligations enter the register —
+  // and the MFN compendium sees it on the next run.
+  app.post<{ Body: { fundId: string; investorId: string; draft: { label: string; clauses: Array<{ term: string; tier: string; text: string }> } } }>(
+    '/api/side-letters/execute',
+    async (req, reply) => {
+      const { fundId, investorId, draft } = req.body ?? ({} as never);
+      if (!fundId || !investorId || !draft?.label || !Array.isArray(draft?.clauses) || draft.clauses.length === 0) {
+        return reply.code(400).send({ error: 'fundId, investorId and a draft with clauses required' });
+      }
+      try {
+        return await withDbOp(() => executeSideLetter(getDb(), { fundId, investorId, draft }));
+      } catch (err) {
+        return reply.code(400).send({ error: errMessage(err) });
+      }
+    },
+  );
+
+  // Paste LP counsel's actual mark-up — atomized into the triage queue.
+  app.post<{ Body: { fundId: string; investorId: string; text: string } }>('/api/comments', async (req, reply) => {
+    const { fundId, investorId, text } = req.body ?? ({} as { fundId: string; investorId: string; text: string });
+    if (!fundId || !investorId || !text) return reply.code(400).send({ error: 'fundId, investorId and text required' });
+    try {
+      return await ingestComments({ fundId, investorId, text });
+    } catch (err) {
+      return reply.code(400).send({ error: errMessage(err) });
+    }
+  });
+
   // ── Intake: bring your own documents ───────────────────────────────
   app.post<{ Body: { name: string; strategy?: string } }>('/api/matters', async (req, reply) => {
     if (!req.body?.name?.trim()) return reply.code(400).send({ error: 'name required' });
@@ -279,13 +342,14 @@ export function registerRoutes(app: FastifyInstance): void {
     if (!file) return reply.code(400).send({ error: 'a file is required' });
     const fundId = (file.fields.fundId as { value?: string } | undefined)?.value;
     const title = (file.fields.title as { value?: string } | undefined)?.value;
+    const investorName = (file.fields.investorName as { value?: string } | undefined)?.value;
     if (!fundId) return reply.code(400).send({ error: 'fundId field required' });
     try {
       const buffer = await file.toBuffer();
       const db = getDb();
       // hold the workspace open for the whole parse → store → embed chain
       return await withDbOp(() =>
-        ingestDocument(db, { fundId, buffer, filename: file.filename, mimeType: file.mimetype, title }),
+        ingestDocument(db, { fundId, buffer, filename: file.filename, mimeType: file.mimetype, title, investorName }),
       );
     } catch (err) {
       return reply.code(400).send({ error: errMessage(err) });
@@ -380,6 +444,9 @@ export function registerRoutes(app: FastifyInstance): void {
       const { kind, payload } = req.body ?? ({} as { kind: string; payload: unknown });
       if (!kind || !payload) return reply.code(400).send({ error: 'kind and payload required' });
       try {
+        // never trust client-sent verification marks — re-verify every
+        // citation against the ontology before the ✓/✗ goes into a document
+        verifyCitationsDeep(getDb(), payload);
         const buffer =
           kind === 'mfn-compendium'
             ? await mfnCompendiumDocx(payload as Parameters<typeof mfnCompendiumDocx>[0])

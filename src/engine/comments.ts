@@ -6,11 +6,12 @@
  */
 
 import { z } from 'zod';
-import { getDb } from '../db/db.js';
+import { getDb, genId } from '../db/db.js';
 import { callStructured } from '../ai/claude.js';
 import { citationSchema } from './citations.js';
 import { hybridSearch } from '../search/hybrid.js';
 import { markPrecedentsUsed, precedentPromptBlock, promotePrecedent, searchPrecedents } from './precedent.js';
+import { investorProfile } from '../ai/gateway.js';
 
 export interface TriagedComment {
   id: string;
@@ -123,7 +124,7 @@ export async function suggestResolution(commentId: string): Promise<CommentSugge
   const result = await callStructured({
     stage: 'comments.suggest',
     system: `You are a fund formation partner resolving an investor comment on a draft LPA. Recommend a resolution grounded in the firm's model language, this investor's own precedent, and — above all — how this firm's lawyers have actually resolved similar comments before (the house precedent block; higher weight means a lawyer stood behind it). Citation quotes must be copied verbatim from the provided sources. Be commercial: protect the sponsor while keeping the investor in the fund.`,
-    user: `INVESTOR: ${comment.investor_name} (${comment.investor_type}, ${comment.jurisdiction})\nDEAL POINT TOPIC: ${comment.provision_topic}\n\nCOMMENT:\n"${comment.text}"\n\n${block('CURRENT DRAFT PROVISION', draftRows)}\n\n${block(
+    user: `INVESTOR: ${comment.investor_name} (${investorProfile(comment.investor_type, comment.jurisdiction)})\nDEAL POINT TOPIC: ${comment.provision_topic}\n\nCOMMENT:\n"${comment.text}"\n\n${block('CURRENT DRAFT PROVISION', draftRows)}\n\n${block(
       'MODEL LANGUAGE',
       modelHits.map((h) => ({ id: h.id, heading: h.heading, text: h.text })),
     )}\n\n${block(`PRECEDENT — ${comment.investor_name} PRIOR SIDE LETTERS`, precedentRows)}\n\n${precedentPromptBlock(housePrecedent)}`,
@@ -181,4 +182,67 @@ export async function resolveComment(commentId: string, action: 'accept' | 'edit
     fundId: comment.fund_id,
     weight: action === 'edit' ? 1.3 : 1.0,
   });
+}
+
+// ── Ingestion — comments enter through the front door ───────────────────
+
+const atomizeSchema = z.object({
+  comments: z.array(
+    z.object({
+      provisionTopic: z
+        .string()
+        .describe(
+          'One of: geographic, mfn, co_invest, fees, distributions, reporting, key_person, transfer, excuse, advisory_board, confidentiality, capital_calls, indemnification, other',
+        ),
+      text: z.string().describe("The investor's point, restated faithfully as one self-contained comment"),
+    }),
+  ),
+});
+
+export interface IngestedComments {
+  count: number;
+  topics: string[];
+}
+
+/**
+ * Paste LP counsel's mark-up / email / comment memo; it is atomized into
+ * individual deal-point comments and entered into the triage queue — so the
+ * negotiation stage runs on what investors actually sent, not seed rows.
+ */
+export async function ingestComments(opts: {
+  fundId: string;
+  investorId: string;
+  text: string;
+}): Promise<IngestedComments> {
+  const db = getDb();
+  const investor = db.prepare(`SELECT id, name FROM investors WHERE id = ?`).get(opts.investorId) as
+    | { id: string; name: string }
+    | undefined;
+  const fund = db.prepare(`SELECT id FROM funds WHERE id = ?`).get(opts.fundId) as { id: string } | undefined;
+  if (!investor || !fund) throw new Error('Unknown investor or fund');
+  if (!opts.text?.trim() || opts.text.trim().length < 20) throw new Error('Paste the mark-up or comment text first.');
+
+  const result = await callStructured({
+    stage: 'comments.ingest',
+    scopeFundId: opts.fundId,
+    system:
+      "Atomize investor counsel's mark-up into individual deal-point comments for a fund negotiation tracker. One entry per distinct point; keep the substance faithful (do not soften or editorialize); classify each to its deal-point topic. Skip pleasantries and process emails.",
+    user: opts.text,
+    schema: atomizeSchema,
+    maxTokens: 6_000,
+    effort: 'medium',
+  });
+
+  const insert = db.prepare(
+    `INSERT INTO comments (id, fund_id, investor_id, provision_topic, text, status) VALUES (?, ?, ?, ?, ?, 'open')`,
+  );
+  const topics = new Set<string>();
+  db.transaction(() => {
+    for (const c of result.data.comments) {
+      insert.run(genId('c'), opts.fundId, investor.id, c.provisionTopic, c.text);
+      topics.add(c.provisionTopic);
+    }
+  })();
+
+  return { count: result.data.comments.length, topics: [...topics] };
 }

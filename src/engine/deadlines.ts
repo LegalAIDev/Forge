@@ -264,7 +264,7 @@ export interface PlannedDuty extends EventDuty {
 export async function planEvent(
   db: Database.Database,
   opts: { eventDescription: string; eventDate: string; fundId?: string; today?: string },
-): Promise<{ duties: PlannedDuty[] }> {
+): Promise<{ duties: PlannedDuty[]; matchedCount: number; totalEventDuties: number }> {
   const today = opts.today ?? toISODate(new Date());
   if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.eventDate)) throw new Error('eventDate must be YYYY-MM-DD');
 
@@ -305,7 +305,9 @@ export async function planEvent(
   }
 
   duties.sort((a, b) => a.actionDate.localeCompare(b.actionDate));
-  return { duties };
+  // disclose what was NOT considered — silent incompleteness is the one
+  // unforgivable failure mode for a compliance register
+  return { duties, matchedCount: duties.length, totalEventDuties: eventDuties.length };
 }
 
 // ── Reminder email (the one frontier call here) ──────────────────────────

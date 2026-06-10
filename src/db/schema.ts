@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS funds (
 CREATE TABLE IF NOT EXISTS investors (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('pension', 'swf', 'endowment', 'insurer', 'fund_of_funds', 'family_office', 'dfi')),
+  type TEXT NOT NULL CHECK (type IN ('pension', 'swf', 'endowment', 'insurer', 'fund_of_funds', 'family_office', 'dfi', 'other')),
   jurisdiction TEXT NOT NULL DEFAULT ''
 );
 
@@ -178,6 +178,7 @@ const FTS_STATEMENTS = [
 
 export function initSchema(db: Database.Database): void {
   migrateEmbeddingsCheck(db);
+  migrateInvestorsCheck(db);
   db.exec(TABLES);
   for (const stmt of FTS_STATEMENTS) {
     try {
@@ -186,6 +187,38 @@ export function initSchema(db: Database.Database): void {
       const msg = err instanceof Error ? err.message : String(err);
       if (!/already exists/i.test(msg)) throw err;
     }
+  }
+}
+
+/** Databases created before BYO-investor creation lack 'other' in the
+ *  investors type CHECK; rebuild once, preserving rows. */
+function migrateInvestorsCheck(db: Database.Database): void {
+  const row = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'investors'`)
+    .get() as { sql: string } | undefined;
+  if (!row || row.sql.includes(`'other'`)) return;
+  // Never RENAME the referenced table — SQLite rewrites every REFERENCES
+  // clause that points at it (regardless of the foreign_keys pragma), which
+  // would leave commitments/documents/comments pointing at a ghost name.
+  // Instead: build the replacement next to it, copy, drop, rename in.
+  // The foreign_keys pragma is a no-op inside an open transaction, so it
+  // must be toggled outside.
+  db.exec(`PRAGMA foreign_keys = OFF`);
+  try {
+    const rebuild = db.transaction(() => {
+      db.exec(`CREATE TABLE investors_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('pension', 'swf', 'endowment', 'insurer', 'fund_of_funds', 'family_office', 'dfi', 'other')),
+        jurisdiction TEXT NOT NULL DEFAULT ''
+      )`);
+      db.exec(`INSERT INTO investors_new SELECT * FROM investors`);
+      db.exec(`DROP TABLE investors`);
+      db.exec(`ALTER TABLE investors_new RENAME TO investors`);
+    });
+    rebuild();
+  } finally {
+    db.exec(`PRAGMA foreign_keys = ON`);
   }
 }
 

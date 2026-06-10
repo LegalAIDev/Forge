@@ -87,6 +87,39 @@ describe('citation verifier', () => {
     expect(quoteAppearsIn(source, 'obligations of [X_1] may terminate', mappings)).toBe(false);
   });
 
+  it('slot IDENTITY: a quote cannot swap one party\'s clause onto another party\'s name', () => {
+    // both names were masked in the same call; the quote attributes
+    // Norrland's clause to EDFC's slot — must NOT verify
+    const mappings = [
+      { placeholder: '[INVESTOR_1]', original: 'Norrland Pension AB', type: 'investor' as const },
+      { placeholder: '[INVESTOR_2]', original: 'Equatorial Development Finance Corporation', type: 'investor' as const },
+    ];
+    expect(
+      verifyCitation(
+        db,
+        { sourceType: 'provision', sourceId: 'p-sl-norr-1', quote: '[INVESTOR_2] shall be excused from participation' },
+        mappings,
+      ),
+    ).toBe(false);
+    // the RIGHT slot still verifies
+    expect(
+      verifyCitation(
+        db,
+        { sourceType: 'provision', sourceId: 'p-sl-norr-1', quote: '[INVESTOR_1] shall be excused from participation' },
+        mappings,
+      ),
+    ).toBe(true);
+    // an UNRESOLVABLE placeholder (model invented one) falls back to the
+    // generic wildcard so renumbering beyond the map doesn't false-reject
+    expect(
+      verifyCitation(
+        db,
+        { sourceType: 'provision', sourceId: 'p-sl-norr-1', quote: '[INVESTOR_9] shall be excused from participation' },
+        mappings,
+      ),
+    ).toBe(true);
+  });
+
   it('rejects fabricated quotes and unknown sources', () => {
     expect(
       verifyCitation(db, { sourceType: 'provision', sourceId: 'p-sl-norr-1', quote: 'The Fund shall buy a yacht' }),

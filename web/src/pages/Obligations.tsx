@@ -8,6 +8,8 @@ interface Answer {
   affectedInvestors: string[];
   citations: Citation[];
   citationsVerified: { total: number; verified: number };
+  consideredCount: number;
+  totalOnFile: number;
 }
 
 interface ExtractResult {
@@ -116,6 +118,10 @@ export function Obligations({ scopeFundId }: { scopeFundId?: string }) {
                 {answer.citationsVerified.verified}/{answer.citationsVerified.total} citations verified
               </span>
             </div>
+            <p className="mt-3 font-mono text-[10px] text-fog/80 tabular-nums">
+              Considered the {answer.consideredCount} most relevant of {answer.totalOnFile} obligations on file
+              {answer.consideredCount < answer.totalOnFile ? ' — narrow the question or scope to a fund for a tighter sweep' : ''}.
+            </p>
           </div>
 
           <div>

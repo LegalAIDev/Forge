@@ -4,6 +4,7 @@
  * de-anonymization so restored names compare against real source text.
  */
 
+import * as crypto from 'node:crypto';
 import { z } from 'zod';
 import type Database from 'better-sqlite3';
 import type { EntityMapping } from '../privacy/anonymize.js';
@@ -20,48 +21,60 @@ export interface VerifiedCitation extends Citation {
   verified: boolean;
 }
 
-const SLOT = 'XSLOTX'; // wildcard marker for a masked entity slot
+const GENERIC_SLOT = 'xslotx'; // wildcard for a placeholder the mapping can't resolve
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Identity token for one masked entity — derived from its ORIGINAL value,
+ *  so Norrland's slot can never match EDFC's, and a swapped amount or date
+ *  can't verify against a different one. */
+function identToken(original: string): string {
+  const h = crypto.createHash('sha1').update(original.trim().toLowerCase()).digest('hex').slice(0, 10);
+  return `xe${h}x`;
+}
+
+function isSlotWord(w: string): boolean {
+  return w === GENERIC_SLOT || /^xe[0-9a-f]{10}x$/.test(w);
+}
+
 /**
- * Normalize text for verbatim comparison. Masked entity slots are treated as
- * wildcards: both `[INVESTOR_3]`-style placeholders and the original names
- * they map to collapse to a single marker. This lets a quote verify against
- * its source even when the frontier model renumbered a placeholder or the
- * quote carries a restored name while the source still holds a placeholder
- * (or vice versa) — we verify the *legal language*, not the name slots,
- * which are validated separately by the mapping itself.
+ * Normalize text for verbatim comparison. Each masked entity — whether it
+ * appears as its original value or as a known placeholder — becomes an
+ * IDENTITY token derived from the original, so renumbered placeholders and
+ * restored names still match, but a quote that swaps one party's clause
+ * onto another party's name (or another amount/date) does NOT verify.
+ * Placeholders the mapping can't resolve become a generic wildcard, used
+ * only by the fallback pass in quoteAppearsIn.
  */
-function normalize(s: string, mappings?: EntityMapping[]): string {
+function normalize(s: string, mappings: EntityMapping[] | undefined, mode: 'identity' | 'generic'): string {
   let out = s;
   if (mappings) {
     const byLen = [...mappings].sort((a, b) => b.original.length - a.original.length);
     for (const m of byLen) {
       if (m.original.length < 3) continue;
-      out = out.replace(new RegExp(escapeRe(m.original), 'gi'), ` ${SLOT} `);
+      const tok = mode === 'identity' ? identToken(m.original) : GENERIC_SLOT;
+      out = out.replace(new RegExp(escapeRe(m.original), 'gi'), ` ${tok} `);
+      out = out.split(m.placeholder).join(` ${tok} `);
     }
   }
-  out = out.replace(/\[[A-Z]+_\d+\]/g, ` ${SLOT} `);
+  out = out.replace(/\[[A-Z]+_\d+\]/g, ` ${GENERIC_SLOT} `);
   out = out.toLowerCase();
   // punctuation → space (keeps words separate); preserves Unicode letters
   out = out.replace(/[^\p{L}\p{N} ]+/gu, ' ');
   out = out.replace(/\s+/g, ' ').trim();
-  // collapse runs of consecutive slot tokens to one — but each slot stays a
-  // space-delimited WORD, so "slot shall" can never fuse into "slotshall"
-  // and let a spliced quote skip intervening text
-  const slot = SLOT.toLowerCase();
-  out = out.replace(new RegExp(`(?:${slot} )+`, 'g'), `${slot} `).replace(new RegExp(`(?: ${slot})+$`), ` ${slot}`).trim();
+  // dedupe only IDENTICAL adjacent slot tokens (repetition), never distinct
+  // entities — each slot stays a space-delimited word, so "slot shall" can
+  // never fuse into "slotshall" and let a spliced quote skip text
+  out = out.replace(/\b(xslotx|xe[0-9a-f]{10}x)\b(?: \1\b)+/g, '$1');
   return out;
 }
 
 /** Real (non-slot) content of a normalized quote — guards against quotes
  *  made up entirely of masked name slots, which would wildcard-match anything. */
 function meaningfulLength(normalizedQuote: string): number {
-  const slot = SLOT.toLowerCase();
-  return normalizedQuote.split(' ').filter((w) => w && w !== slot).join('').length;
+  return normalizedQuote.split(' ').filter((w) => w && !isSlotWord(w)).join('').length;
 }
 
 const MIN_MEANINGFUL = 6;
@@ -112,11 +125,19 @@ function sourceText(db: Database.Database, c: Citation): string | null {
  *  slots treated as wildcards)? The reusable core of citation verification. */
 export function quoteAppearsIn(source: string, quote: string, mappings?: EntityMapping[]): boolean {
   if (!quote || quote.trim().length === 0) return false;
-  const nq = normalize(quote, mappings);
+  const nq = normalize(quote, mappings, 'identity');
   // a quote that's only masked name slots (no real legal language) would
   // wildcard-match any source mentioning that party — reject it
   if (meaningfulLength(nq) < MIN_MEANINGFUL) return false;
-  return normalize(source, mappings).includes(nq);
+  // strict pass: entity slots must match by IDENTITY
+  if (normalize(source, mappings, 'identity').includes(nq)) return true;
+  // fallback: only when the quote carries a placeholder the mapping can't
+  // resolve (model invented/renumbered beyond the map) — compare with all
+  // slots generic, the pre-identity behavior
+  if (nq.includes(GENERIC_SLOT)) {
+    return normalize(source, mappings, 'generic').includes(normalize(quote, mappings, 'generic'));
+  }
+  return false;
 }
 
 /** Verify one citation: the quote must appear (whitespace-normalized, with

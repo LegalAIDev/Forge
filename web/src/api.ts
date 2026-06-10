@@ -16,10 +16,11 @@ export async function post<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function uploadDocument(fundId: string, file: File, title?: string): Promise<{
+export async function uploadDocument(fundId: string, file: File, title?: string, investorName?: string): Promise<{
   documentId: string;
   title: string;
   type: string;
+  investorName: string | null;
   provisionCount: number;
   charCount: number;
   embedded: number;
@@ -27,6 +28,7 @@ export async function uploadDocument(fundId: string, file: File, title?: string)
   const form = new FormData();
   form.append('fundId', fundId);
   if (title) form.append('title', title);
+  if (investorName?.trim()) form.append('investorName', investorName.trim());
   form.append('file', file);
   const res = await fetch(`${BASE}/documents/upload`, { method: 'POST', body: form });
   if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `HTTP ${res.status}`);

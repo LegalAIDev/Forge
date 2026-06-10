@@ -21,6 +21,13 @@ export const config = {
     model: process.env.FORGE_MODEL ?? 'claude-fable-5',
   },
 
+  privacy: {
+    /** Investor type ("pension") aids drafting and is sent by default;
+     *  jurisdiction is NOT — type+jurisdiction together can re-identify an
+     *  LP by structure in a small fund. Opt in with FORGE_SEND_JURISDICTION=1. */
+    sendJurisdiction: process.env.FORGE_SEND_JURISDICTION === '1',
+  },
+
   ollama: {
     baseUrl: (process.env.FORGE_OLLAMA_URL ?? 'http://localhost:11434').replace(/\/$/, ''),
     model: process.env.FORGE_LOCAL_MODEL ?? 'gemma3:4b',

@@ -25,7 +25,8 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
   const [extracting, setExtracting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpload, setLastUpload] = useState<{ title: string; provisionCount: number; embedded: number } | null>(null);
+  const [investorName, setInvestorName] = useState('');
+  const [lastUpload, setLastUpload] = useState<{ title: string; provisionCount: number; embedded: number; investorName: string | null } | null>(null);
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -60,7 +61,7 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
     setExtracted(null);
     setLastUpload(null);
     try {
-      const up = await uploadDocument(matterId, file);
+      const up = await uploadDocument(matterId, file, undefined, investorName);
       setLastUpload(up);
       await loadMatters();
       // chain straight into extraction — the useful part
@@ -130,6 +131,12 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
             <h3 className="text-sm font-semibold text-bone">Add a document</h3>
           </div>
           <p className="mt-2 text-xs leading-relaxed text-fog">PDF, Word or text. Names are masked on this machine before any AI sees a word.</p>
+          <input
+            value={investorName}
+            onChange={(e) => setInvestorName(e.target.value)}
+            placeholder="Investor / counterparty name (optional — links side letters to their LP)"
+            className="field mt-3 w-full py-2 text-xs"
+          />
           <label
             onDragOver={(e) => {
               e.preventDefault();
@@ -182,7 +189,15 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
       {lastUpload && (
         <p className="animate-fade-up mt-5 text-xs text-fog">
           Parsed <span className="font-medium text-bone">{lastUpload.title}</span> — {lastUpload.provisionCount} provisions
-          {lastUpload.embedded > 0 ? `, ${lastUpload.embedded} embedded for semantic search` : ''}.
+          {lastUpload.embedded > 0 ? `, ${lastUpload.embedded} embedded for semantic search` : ''}
+          {lastUpload.investorName ? (
+            <>
+              , linked to <span className="font-medium text-bone">{lastUpload.investorName}</span>
+            </>
+          ) : (
+            ''
+          )}
+          .
         </p>
       )}
 

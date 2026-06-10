@@ -10,6 +10,18 @@ import { genId } from '../db/db.js';
 import { extractText, chunkIntoProvisions, guessDocType } from '../documents/parser.js';
 import { embedAll } from '../search/embeddings.js';
 import { promotePrecedent } from './precedent.js';
+import { matchInvestorName } from './obligations.js';
+
+/** Fuzzy-match an investor by name, creating one if unknown — so BYO side
+ *  letters join the ontology with a real grantee instead of NULL. */
+export function resolveOrCreateInvestor(db: Database.Database, name: string): { id: string; name: string } {
+  const candidates = db.prepare(`SELECT id, name FROM investors`).all() as Array<{ id: string; name: string }>;
+  const matched = matchInvestorName(candidates, name);
+  if (matched) return matched;
+  const id = genId('inv');
+  db.prepare(`INSERT INTO investors (id, name, type, jurisdiction) VALUES (?, ?, 'other', '')`).run(id, name.trim());
+  return { id, name: name.trim() };
+}
 
 export interface Matter {
   id: string;
@@ -40,6 +52,7 @@ export interface IngestResult {
   documentId: string;
   title: string;
   type: string;
+  investorName: string | null;
   provisionCount: number;
   charCount: number;
   embedded: number;
@@ -52,7 +65,16 @@ export interface IngestResult {
  */
 export async function ingestDocument(
   db: Database.Database,
-  opts: { fundId: string; buffer: Buffer; filename: string; mimeType: string; title?: string },
+  opts: {
+    fundId: string;
+    buffer: Buffer;
+    filename: string;
+    mimeType: string;
+    title?: string;
+    /** grantee, for side letters — fuzzy-matched against known investors,
+     *  created if new, so MFN/compendium/attribution work on your own docs */
+    investorName?: string;
+  },
 ): Promise<IngestResult> {
   const fund = db.prepare(`SELECT id FROM funds WHERE id = ?`).get(opts.fundId) as { id: string } | undefined;
   if (!fund) throw new Error(`Unknown matter: ${opts.fundId}`);
@@ -67,22 +89,40 @@ export async function ingestDocument(
   const provisions = chunkIntoProvisions(text);
   if (provisions.length === 0) throw new Error('No provisions could be identified in this document.');
 
+  // grantee link — provided name, or for side letters a best-effort detect
+  // from the document's opening lines; without it the doc would be invisible
+  // to the MFN compendium
+  let investor: { id: string; name: string } | null = null;
+  if (opts.investorName?.trim()) {
+    investor = resolveOrCreateInvestor(db, opts.investorName);
+  } else if (docType === 'side_letter') {
+    const known = db.prepare(`SELECT id, name FROM investors`).all() as Array<{ id: string; name: string }>;
+    const head = text.slice(0, 600);
+    investor = known.find((i) => head.toLowerCase().includes(i.name.toLowerCase())) ?? null;
+  }
+
   const documentId = genId('doc');
   const insertDoc = db.prepare(
-    `INSERT INTO documents (id, fund_id, type, status, title, content) VALUES (?, ?, ?, 'closed', ?, ?)`,
+    `INSERT INTO documents (id, fund_id, type, status, investor_id, title, content) VALUES (?, ?, ?, 'closed', ?, ?, ?)`,
   );
   const insertProvision = db.prepare(
     `INSERT INTO provisions (id, document_id, topic, heading, text, position) VALUES (?, ?, ?, ?, ?, ?)`,
   );
+  const insertSideLetter = db.prepare(
+    `INSERT INTO side_letters (id, fund_id, investor_id, document_id, agreed_terms_json) VALUES (?, ?, ?, ?, '[]')`,
+  );
 
   const provisionIds: Array<{ id: string; heading: string; text: string }> = [];
   const tx = db.transaction(() => {
-    insertDoc.run(documentId, opts.fundId, docType, title, text);
+    insertDoc.run(documentId, opts.fundId, docType, investor?.id ?? null, title, text);
     provisions.forEach((p, i) => {
       const pid = genId('p');
       insertProvision.run(pid, documentId, p.topic, p.heading, p.text, i + 1);
       provisionIds.push({ id: pid, heading: p.heading, text: p.text });
     });
+    if (docType === 'side_letter' && investor) {
+      insertSideLetter.run(genId('sl'), opts.fundId, investor.id, documentId);
+    }
   });
   tx();
 
@@ -113,6 +153,7 @@ export async function ingestDocument(
     documentId,
     title,
     type: docType,
+    investorName: investor?.name ?? null,
     provisionCount: provisions.length,
     charCount: text.length,
     embedded,

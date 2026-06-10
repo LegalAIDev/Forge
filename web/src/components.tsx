@@ -262,10 +262,10 @@ const STAGE_LABELS: Record<string, [string, string]> = {
   'insight-capturer': ['Insight capturer', 'mining prior comments & precedent'],
   extractor: ['Extractor', 'structuring model-document language'],
   drafter: ['Drafter', 'drawing new provisions'],
-  'feedback-integrator': ['Feedback integrator', 'saving into the ontology'],
+  persist: ['Save', 'writing the draft into the ontology (no AI)'],
 };
 
-const STAGES = ['insight-capturer', 'extractor', 'drafter', 'feedback-integrator'];
+const STAGES = ['insight-capturer', 'extractor', 'drafter', 'persist'];
 
 export function RunProgress({ events, running }: { events: RunEvent[]; running: boolean }) {
   const stageState = (stage: string): 'pending' | 'active' | 'done' => {

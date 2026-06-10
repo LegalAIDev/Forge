@@ -10,6 +10,7 @@
  * regex pass alone carries the call — degraded, never blocked.
  */
 
+import { config } from '../config.js';
 import { getDb } from '../db/db.js';
 import {
   anonymize,
@@ -191,6 +192,14 @@ export async function sanitizeOutbound(text: string, runId?: string, scopeFundId
  * so placeholders inside nested structured output (including citation
  * quotes) come back as real names.
  */
+/** What may be said about an investor next to its masked name. Type alone
+ *  by default; jurisdiction only when explicitly enabled — the pair can
+ *  re-identify an LP by structure in a small fund. */
+export function investorProfile(type: string, jurisdiction: string): string {
+  const t = type.replace(/_/g, ' ');
+  return config.privacy.sendJurisdiction && jurisdiction ? `${t}, ${jurisdiction}` : t;
+}
+
 export function restoreInbound<T>(value: T, mappings: EntityMapping[]): T {
   if (typeof value === 'string') {
     return deanonymize(value, mappings) as unknown as T;

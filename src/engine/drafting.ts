@@ -75,6 +75,9 @@ const sectionsSchema = z.object({
 
 export interface DraftingResult {
   documentId: string;
+  /** the term-sheet parse keeps the most important terms; the gap is disclosed */
+  termsTotal: number;
+  termsKept: number;
   sections: Array<{ provisionId: string; heading: string; topic: string; text: string; citations: unknown[] }>;
   insights: z.infer<typeof insightsSchema>['insights'];
   citationsVerified: { total: number; verified: number };
@@ -108,8 +111,16 @@ async function executePipeline(runId: string, fundId: string, termSheetText: str
     maxTokens: 4_000,
     effort: 'medium',
   });
+  const termsTotal = parsed.data.terms.length;
   const terms = parsed.data.terms.slice(0, MAX_TERMS);
-  emit(runId, 'insight-capturer', 'info', `${terms.length} commercial terms identified`);
+  emit(
+    runId,
+    'insight-capturer',
+    'info',
+    termsTotal > terms.length
+      ? `${termsTotal} terms identified — drafting the ${terms.length} most important, ${termsTotal - terms.length} deferred`
+      : `${terms.length} commercial terms identified`,
+  );
 
   // ── Stage 1b: mine prior art ────────────────────────────────────────
   const priorBundles: string[] = [];
@@ -183,7 +194,7 @@ async function executePipeline(runId: string, fundId: string, termSheetText: str
   emit(runId, 'drafter', 'done', `${drafted.data.sections.length} sections drafted`);
 
   // ── Persist as a draft document ─────────────────────────────────────
-  emit(runId, 'feedback-integrator', 'start', 'Saving draft into the ontology');
+  emit(runId, 'persist', 'start', 'Saving the draft into the ontology (database write — no AI)');
   const documentId = genId('doc');
   const insertDoc = db.prepare(
     `INSERT INTO documents (id, fund_id, type, status, title, content) VALUES (?, ?, 'lpa', 'draft', ?, ?)`,
@@ -213,10 +224,12 @@ async function executePipeline(runId: string, fundId: string, termSheetText: str
     db,
     sections.map((s) => ({ ownerType: 'provision' as const, ownerId: s.provisionId, text: `${s.heading}\n${s.text}` })),
   );
-  emit(runId, 'feedback-integrator', 'done', `Draft saved as ${documentId} — ready for feedback`);
+  emit(runId, 'persist', 'done', `Draft saved as ${documentId} — ready for your mark-up`);
 
   return {
     documentId,
+    termsTotal,
+    termsKept: terms.length,
     sections,
     insights: insights.data.insights,
     citationsVerified: {
