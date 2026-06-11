@@ -1,4 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { get, type Fund } from './api.js';
+import { FundContext } from './fund-context.js';
 import { Intro, shouldPlayIntro } from './Intro.js';
 import { StatusBadge, PrivacyPanel, WorkspaceSwitcher, EngineKeyBanner } from './components.js';
 import { Ontology } from './pages/Ontology.js';
@@ -11,8 +13,8 @@ import { Obligations } from './pages/Obligations.js';
 import { Deadlines } from './pages/Deadlines.js';
 import { Mfn } from './pages/Mfn.js';
 
-// ordered as a fundraise actually runs: know your practice → get documents
-// in → draft → negotiate → paper it → live with what you promised
+// ordered as a fundraise actually runs: know your practice and your files,
+// then raise (draft, negotiate, paper it), then live with what you promised
 const TABS = [
   { key: 'ontology', label: 'Overview' },
   { key: 'intake', label: 'Documents' },
@@ -20,10 +22,13 @@ const TABS = [
   { key: 'changes', label: 'Changes' },
   { key: 'comments', label: 'Comments' },
   { key: 'side-letters', label: 'Side Letters' },
-  { key: 'mfn', label: 'MFN' },
   { key: 'obligations', label: 'Obligations' },
   { key: 'deadlines', label: 'Deadlines' },
+  { key: 'mfn', label: 'MFN' },
 ] as const;
+
+// thin dividers after these tabs teach the lifecycle at a glance
+const GROUP_AFTER = new Set(['intake', 'side-letters']);
 
 /** Segmented control with a sliding active pill. */
 function SegmentedNav({ active, onSelect }: { active: string; onSelect: (key: string) => void }) {
@@ -94,17 +99,19 @@ function SegmentedNav({ active, onSelect }: { active: string; onSelect: (key: st
       <nav ref={(el) => { trackRef.current = el; }} onScroll={updateFades} className="seg-track" aria-label="Sections">
       {indicator && <span className="seg-indicator" style={{ left: indicator.left, width: indicator.width }} />}
       {TABS.map((t) => (
-        <button
-          key={t.key}
-          ref={(el) => {
-            btnRefs.current[t.key] = el;
-          }}
-          onClick={() => onSelect(t.key)}
-          data-active={active === t.key}
-          className="seg-btn"
-        >
-          {t.label}
-        </button>
+        <Fragment key={t.key}>
+          <button
+            ref={(el) => {
+              btnRefs.current[t.key] = el;
+            }}
+            onClick={() => onSelect(t.key)}
+            data-active={active === t.key}
+            className="seg-btn"
+          >
+            {t.label}
+          </button>
+          {GROUP_AFTER.has(t.key) && <span className="seg-divider" aria-hidden />}
+        </Fragment>
       ))}
       </nav>
     </div>
@@ -115,8 +122,25 @@ export default function App() {
   const [tab, setTab] = useState<string>('ontology');
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [intro, setIntro] = useState(shouldPlayIntro);
-  const [scopeFundId, setScopeFundId] = useState<string | undefined>(undefined);
   const [elevated, setElevated] = useState(false);
+
+  // the one fund every page acts on, picked once in the header (or by
+  // clicking a fund card on Overview)
+  const [funds, setFunds] = useState<Fund[]>([]);
+  const [fundId, setFundId] = useState('');
+  const refreshFunds = async (): Promise<void> => {
+    try {
+      const all = await get<Fund[]>('/funds');
+      setFunds(all);
+      setFundId((cur) => (cur && all.some((f) => f.id === cur) ? cur : (all.find((f) => f.id === 'fund-3') ?? all[0])?.id ?? ''));
+    } catch {
+      /* server not up yet; the health banner covers it */
+    }
+  };
+  useEffect(() => {
+    void refreshFunds();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setElevated(window.scrollY > 6);
@@ -126,6 +150,7 @@ export default function App() {
   }, []);
 
   return (
+    <FundContext.Provider value={{ fundId, setFundId, funds, refreshFunds }}>
     <div className="app-bg min-h-screen overflow-x-hidden">
       {intro && <Intro onDone={() => setIntro(false)} />}
       <header className={`glass hairline-b sticky top-0 z-20 transition-shadow duration-300 ${elevated ? 'header-elevated' : ''}`}>
@@ -135,6 +160,21 @@ export default function App() {
             <SegmentedNav active={tab} onSelect={setTab} />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2.5">
+            {funds.length > 0 && (
+              <select
+                value={fundId}
+                onChange={(e) => setFundId(e.target.value)}
+                className="field max-w-44 py-1.5 text-xs"
+                title="The fund every page acts on. Pick it once; Drafting, Comments, Side Letters and the rest all follow."
+                aria-label="Active fund"
+              >
+                {funds.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name.replace(', L.P.', '')}
+                  </option>
+                ))}
+              </select>
+            )}
             <WorkspaceSwitcher />
             <span className="hidden lg:inline-flex">
               <StatusBadge />
@@ -167,8 +207,8 @@ export default function App() {
         {tab === 'ontology' && <Ontology onNavigate={setTab} />}
         {tab === 'intake' && (
           <Intake
-            onUseMatter={(fundId) => {
-              setScopeFundId(fundId);
+            onUseMatter={(id) => {
+              setFundId(id);
               setTab('obligations');
             }}
           />
@@ -177,7 +217,7 @@ export default function App() {
         {tab === 'changes' && <Changes />}
         {tab === 'comments' && <Comments />}
         {tab === 'side-letters' && <SideLetters />}
-        {tab === 'obligations' && <Obligations scopeFundId={scopeFundId} />}
+        {tab === 'obligations' && <Obligations />}
         {tab === 'deadlines' && <Deadlines />}
         {tab === 'mfn' && <Mfn />}
       </main>
@@ -188,5 +228,6 @@ export default function App() {
 
       {privacyOpen && <PrivacyPanel onClose={() => setPrivacyOpen(false)} />}
     </div>
+    </FundContext.Provider>
   );
 }

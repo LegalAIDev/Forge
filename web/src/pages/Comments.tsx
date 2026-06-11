@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { get, post, type Citation, type Fund } from '../api.js';
+import { get, post, type Citation } from '../api.js';
+import { fundName as ctxFundName, useFund } from '../fund-context.js';
 import { SectionTitle, Button, CitationRow, ErrorNote, ThinkingCard } from '../components.js';
 
 interface Comment {
@@ -15,8 +16,8 @@ interface Comment {
 }
 
 export function Comments() {
-  const [funds, setFunds] = useState<Fund[]>([]);
-  const [fundId, setFundId] = useState('fund-3');
+  const ctx = useFund();
+  const fundId = ctx.fundId;
   const [grouped, setGrouped] = useState<Record<string, Comment[]>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<Record<string, string>>({});
@@ -29,7 +30,7 @@ export function Comments() {
   const [ingested, setIngested] = useState<{ count: number; topics: string[]; skippedDuplicates: number } | null>(null);
 
   const load = useCallback(
-    () => get<Record<string, Comment[]>>(`/comments?fundId=${fundId}`).then(setGrouped).catch(() => {}),
+    () => (fundId ? get<Record<string, Comment[]>>(`/comments?fundId=${fundId}`).then(setGrouped).catch(() => {}) : Promise.resolve()),
     [fundId],
   );
   useEffect(() => {
@@ -37,12 +38,6 @@ export function Comments() {
   }, [load]);
 
   useEffect(() => {
-    get<Fund[]>('/funds')
-      .then((all) => {
-        setFunds(all);
-        if (all.length > 0 && !all.some((f) => f.id === 'fund-3')) setFundId(all[0].id);
-      })
-      .catch(() => {});
     get<Array<{ id: string; name: string }>>('/investors').then(setInvestors).catch(() => {});
   }, []);
 
@@ -93,7 +88,7 @@ export function Comments() {
 
   const total = Object.values(grouped).flat().length;
   const open = Object.values(grouped).flat().filter((c) => c.status === 'open').length;
-  const fundName = funds.find((f) => f.id === fundId)?.name ?? 'this fund';
+  const fundName = ctxFundName(ctx);
 
   return (
     <div>
@@ -103,16 +98,6 @@ export function Comments() {
       >
         Investor Comments
       </SectionTitle>
-
-      <div className="mb-8 flex flex-wrap items-center gap-3">
-        <select value={fundId} onChange={(e) => setFundId(e.target.value)} className="field py-2 text-sm">
-          {funds.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
-      </div>
 
       {/* Bring real comments in — the queue runs on what LP counsel actually sent */}
       <div className="card mb-10 p-7">

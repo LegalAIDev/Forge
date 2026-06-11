@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { get, post, subscribeRun, type Citation, type Fund, type RunEvent } from '../api.js';
+import { get, post, subscribeRun, type Citation, type RunEvent } from '../api.js';
+import { useFund } from '../fund-context.js';
 import { SectionTitle, Button, CitationRow, ErrorNote, RunProgress } from '../components.js';
 
 interface DraftResult {
@@ -17,8 +18,7 @@ interface FeedbackResult {
 }
 
 export function Drafting() {
-  const [funds, setFunds] = useState<Fund[]>([]);
-  const [fundId, setFundId] = useState('fund-3');
+  const { fundId } = useFund();
   const [termSheet, setTermSheet] = useState('');
   const [running, setRunning] = useState(false);
   const [events, setEvents] = useState<RunEvent[]>([]);
@@ -27,15 +27,6 @@ export function Drafting() {
   const [feedback, setFeedback] = useState<Record<string, string>>({});
   const [feedbackBusy, setFeedbackBusy] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<Record<string, FeedbackResult>>({});
-
-  useEffect(() => {
-    get<Fund[]>('/funds')
-      .then((all) => {
-        setFunds(all);
-        if (all.length > 0 && !all.some((f) => f.id === 'fund-3')) setFundId(all[0].id);
-      })
-      .catch(() => {});
-  }, []);
 
   // Prefill with the selected fund's own term sheet when one is on file and
   // the lawyer hasn't typed anything — no hardwired seed document.
@@ -101,15 +92,6 @@ export function Drafting() {
         Drafting
       </SectionTitle>
 
-      <div className="mb-3">
-        <select value={fundId} onChange={(e) => setFundId(e.target.value)} className="field py-2 text-sm">
-          {funds.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
-      </div>
       <textarea
         value={termSheet}
         onChange={(e) => setTermSheet(e.target.value)}
@@ -136,7 +118,7 @@ export function Drafting() {
             <h3 className="text-sm font-semibold text-bone">
               Drafted sections <span className="ml-2 font-mono text-[11px] font-normal text-fog">{result.documentId}</span>
             </h3>
-            <span className="font-mono text-[10px] text-fog tabular-nums">
+            <span className="font-mono text-[10px] text-fog tabular-nums" title="Every quote was checked word-for-word against the document on file. A full count means every citation is really there.">
               {result.citationsVerified.verified}/{result.citationsVerified.total} citations verified
             </span>
           </div>

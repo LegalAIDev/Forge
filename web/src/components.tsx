@@ -80,16 +80,16 @@ export function WorkspaceSwitcher() {
       <button
         onClick={() => setOpen((v) => !v)}
         className="btn-ghost max-w-52"
-        title={`${active?.name ?? 'Workspace'}. Matter workspaces are separate, walled-off files`}
+        title={`${active?.name ?? 'Client file'}. Client files are separate, walled-off databases; only the open one is readable`}
       >
         <span className="text-fog">⊟</span>
-        <span className="truncate">{active?.name ?? 'Workspace'}</span>
+        <span className="truncate">{active?.name ?? 'Client file'}</span>
         <span className="text-fog">▾</span>
       </button>
       {open && (
         <div className="animate-pop-in absolute right-0 top-full z-40 mt-2 w-80 rounded-2xl border border-black/[0.08] bg-surface p-3 shadow-[0_8px_24px_rgba(0,0,0,0.10),0_28px_70px_rgba(0,0,0,0.16)]">
           <p className="px-2 pb-2 pt-1 text-[11px] leading-relaxed text-fog">
-            Matter workspaces are separate files, each its own ethical wall. Only the open one is readable.
+            Each client file is a separate, walled-off database; an ethical wall by construction. Only the open one is readable.
           </p>
           {workspaces.map((w) => (
             <div key={w.id} className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs hover:bg-black/[0.03]">
@@ -149,7 +149,7 @@ export function WorkspaceSwitcher() {
                   }
                 }
               }}
-              placeholder="New matter workspace… (Enter)"
+              placeholder="New client file… (Enter)"
               className="field w-full flex-1 py-1.5 text-xs"
             />
           </div>

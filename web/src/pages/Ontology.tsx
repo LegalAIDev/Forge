@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { get, usd, type Fund, type Obligation } from '../api.js';
-import { SectionTitle, CountUpUsd } from '../components.js';
+import { useFund } from '../fund-context.js';
+import { SectionTitle, CountUpUsd, Button } from '../components.js';
 
 interface FundDetail extends Fund {
   investors: Array<{ id: string; name: string; type: string; jurisdiction: string; amount_usd: number }>;
@@ -165,22 +166,11 @@ function LearnedCard() {
 }
 
 export function Ontology({ onNavigate }: { onNavigate: (tab: string) => void }) {
-  const [funds, setFunds] = useState<Fund[]>([]);
-  const [selected, setSelected] = useState<string>('');
+  const { fundId: selected, setFundId: setSelected, funds } = useFund();
   const [detail, setDetail] = useState<FundDetail | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>('');
+  const [hintDismissed, setHintDismissed] = useState(() => localStorage.getItem('forge-start-hint') === 'done');
 
-  useEffect(() => {
-    get<Fund[]>('/funds')
-      .then((all) => {
-        setFunds(all);
-        // reconcile with what's actually on file — never a hardwired seed id
-        setSelected((cur) =>
-          cur && all.some((f) => f.id === cur) ? cur : (all.find((f) => f.id === 'fund-2') ?? all[0])?.id ?? '',
-        );
-      })
-      .catch(() => {});
-  }, []);
   useEffect(() => {
     if (!selected) {
       setDetail(null);
@@ -188,6 +178,11 @@ export function Ontology({ onNavigate }: { onNavigate: (tab: string) => void }) 
     }
     get<FundDetail>(`/funds/${selected}`).then(setDetail).catch(() => setDetail(null));
   }, [selected]);
+
+  const dismissHint = (): void => {
+    localStorage.setItem('forge-start-hint', 'done');
+    setHintDismissed(true);
+  };
 
   const obligations = detail?.obligations.filter((o) => !typeFilter || o.type === typeFilter) ?? [];
   const types = [...new Set(detail?.obligations.map((o) => o.type) ?? [])];
@@ -200,6 +195,21 @@ export function Ontology({ onNavigate }: { onNavigate: (tab: string) => void }) 
       >
         Overview
       </SectionTitle>
+
+      {!hintDismissed && (
+        <div className="card animate-fade-up mb-6 flex flex-wrap items-center gap-4 border-ember/20 bg-ember/[0.04] p-5">
+          <div className="min-w-64 flex-1 text-sm leading-relaxed">
+            <span className="font-semibold text-bone">New here?</span> Click a fund below to make it the one you're working
+            on (the whole app follows), then ask the register a question. The demo one is ready to go.
+          </div>
+          <div className="flex items-center gap-2.5">
+            <Button onClick={() => { dismissHint(); onNavigate('obligations'); }}>Ask the register</Button>
+            <button onClick={dismissHint} className="btn-ghost" aria-label="Dismiss">
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       <AttentionStrip onNavigate={onNavigate} />
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { get, post, uploadDocument, type Fund } from '../api.js';
+import { post, uploadDocument, type Fund } from '../api.js';
+import { useFund } from '../fund-context.js';
 import { SectionTitle, Button, ErrorNote } from '../components.js';
 
 interface Extracted {
@@ -17,8 +18,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void }) {
-  const [matters, setMatters] = useState<Fund[]>([]);
-  const [matterId, setMatterId] = useState<string>('');
+  const { fundId: matterId, setFundId: setMatterId, funds: matters, refreshFunds } = useFund();
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -30,11 +30,6 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
   const [extracted, setExtracted] = useState<Extracted | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const loadMatters = () => get<Fund[]>('/funds').then(setMatters).catch(() => {});
-  useEffect(() => {
-    loadMatters();
-  }, []);
-
   const createMatter = async () => {
     if (!newName.trim()) return;
     setCreating(true);
@@ -42,7 +37,7 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
     try {
       const fund = await post<Fund>('/matters', { name: newName.trim() });
       setNewName('');
-      await loadMatters();
+      await refreshFunds();
       setMatterId(fund.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -53,7 +48,7 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
 
   const onFile = async (file: File) => {
     if (!matterId) {
-      setError('Create or choose an engagement first.');
+      setError('Create or choose a fund first.');
       return;
     }
     setUploading(true);
@@ -63,7 +58,7 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
     try {
       const up = await uploadDocument(matterId, file, undefined, investorName);
       setLastUpload(up);
-      await loadMatters();
+      await refreshFunds();
       // chain straight into extraction — the useful part
       setExtracting(true);
       setExtracted(await post<Extracted>(`/obligations/extract/${up.documentId}`, {}));
@@ -95,12 +90,12 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ember/12 font-mono text-xs font-semibold text-ember">
               1
             </span>
-            <h3 className="text-sm font-semibold text-bone">Choose the matter</h3>
+            <h3 className="text-sm font-semibold text-bone">Choose the fund</h3>
           </div>
           <p className="mt-2 text-xs leading-relaxed text-fog">Documents are filed under a fund or client matter, like a deal room.</p>
           {matters.length > 0 && (
             <select value={matterId} onChange={(e) => setMatterId(e.target.value)} className="field mt-4 w-full">
-              <option value="">Choose an existing engagement…</option>
+              <option value="">Choose an existing fund…</option>
               {matters.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -113,7 +108,7 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && createMatter()}
-              placeholder="…or name a new one"
+              placeholder="…or start a new fund"
               className="field w-full flex-1 py-2 text-sm"
             />
             <Button onClick={createMatter} busy={creating} disabled={!newName.trim()}>
@@ -177,7 +172,7 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
               <>
                 <span className="text-2xl transition-transform duration-300">{dragging ? '⬇' : '↥'}</span>
                 <span className="mt-1.5 font-medium">
-                  {dragging ? 'Drop it' : matterId ? 'Drop a file or click to choose' : 'Choose an engagement first'}
+                  {dragging ? 'Drop it' : matterId ? 'Drop a file or click to choose' : 'Choose a fund first'}
                 </span>
               </>
             )}
@@ -232,7 +227,7 @@ export function Intake({ onUseMatter }: { onUseMatter?: (fundId: string) => void
           </div>
           {onUseMatter && matterId && (
             <div className="mt-5">
-              <Button onClick={() => onUseMatter(matterId)}>Ask about this matter →</Button>
+              <Button onClick={() => onUseMatter(matterId)}>Ask about this fund →</Button>
             </div>
           )}
         </div>

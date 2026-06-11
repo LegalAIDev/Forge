@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { downloadDocx, get, post, type Citation, type Fund } from '../api.js';
+import { downloadDocx, get, post, type Citation } from '../api.js';
+import { useFund } from '../fund-context.js';
 import { SectionTitle, Button, CitationRow, ErrorNote, ThinkingCard } from '../components.js';
 
 interface Drafts {
@@ -37,8 +38,7 @@ const DEFAULT_TERMS = `Excusal from investments in EU-sanctioned or sub-investme
 Annual ESG report on the Invest Europe template`;
 
 export function SideLetters() {
-  const [funds, setFunds] = useState<Fund[]>([]);
-  const [fundId, setFundId] = useState('fund-3');
+  const { fundId } = useFund();
   const [investors, setInvestors] = useState<Array<{ id: string; name: string; type: string }>>([]);
   const [investorId, setInvestorId] = useState('inv-norrland');
   const [terms, setTerms] = useState(DEFAULT_TERMS);
@@ -49,12 +49,6 @@ export function SideLetters() {
   const [executed, setExecuted] = useState<Executed | null>(null);
 
   useEffect(() => {
-    get<Fund[]>('/funds')
-      .then((all) => {
-        setFunds(all);
-        if (all.length > 0 && !all.some((f) => f.id === 'fund-3')) setFundId(all[0].id);
-      })
-      .catch(() => {});
     get<Array<{ id: string; name: string; type: string }>>('/investors')
       .then((all) => {
         setInvestors(all);
@@ -116,16 +110,6 @@ export function SideLetters() {
       <div className="grid gap-6 md:grid-cols-3">
         <div className="space-y-4">
           <div>
-            <label className="mb-2 block text-xs font-medium text-fog">Fund</label>
-            <select value={fundId} onChange={(e) => setFundId(e.target.value)} className="field w-full">
-              {funds.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
             <label className="mb-2 block text-xs font-medium text-fog">Investor</label>
             <select value={investorId} onChange={(e) => setInvestorId(e.target.value)} className="field w-full">
               {investors.map((i) => (
@@ -178,7 +162,7 @@ export function SideLetters() {
               >
                 ⤓ Download .docx
               </button>
-              <span className="font-mono text-[10px] tabular-nums">
+              <span className="font-mono text-[10px] tabular-nums" title="Every quote was checked word-for-word against the document on file. A full count means every citation is really there.">
                 {result.citationsVerified.verified}/{result.citationsVerified.total} citations verified
               </span>
             </span>

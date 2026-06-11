@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { get, post, type Citation } from '../api.js';
+import { fundName as ctxFundName, useFund } from '../fund-context.js';
 import { SectionTitle, Button, CitationChip, ErrorNote, ThinkingCard } from '../components.js';
 
 interface Answer {
@@ -18,7 +19,10 @@ interface ExtractResult {
 
 const SAMPLE = 'We have a time-sensitive new deal in sub-Saharan Africa. What obligations do we have?';
 
-export function Obligations({ scopeFundId }: { scopeFundId?: string }) {
+export function Obligations() {
+  const ctx = useFund();
+  const [scope, setScope] = useState<'all' | 'fund'>('all');
+  const scopeFundId = scope === 'fund' ? ctx.fundId : undefined;
   const [question, setQuestion] = useState(SAMPLE);
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<Answer | null>(null);
@@ -27,21 +31,12 @@ export function Obligations({ scopeFundId }: { scopeFundId?: string }) {
   const [extractDoc, setExtractDoc] = useState('');
   const [extractBusy, setExtractBusy] = useState(false);
   const [extracted, setExtracted] = useState<ExtractResult | null>(null);
-  const [scopeName, setScopeName] = useState<string | null>(null);
 
   useEffect(() => {
     get<Array<{ id: string; title: string; status: string; type: string }>>('/documents')
       .then((all) => setDocs(all.filter((d) => d.status === 'closed')))
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!scopeFundId) {
-      setScopeName(null);
-      return;
-    }
-    get<{ name: string }>(`/funds/${scopeFundId}`).then((f) => setScopeName(f.name)).catch(() => setScopeName(null));
-  }, [scopeFundId]);
 
   const ask = async () => {
     setBusy(true);
@@ -78,12 +73,21 @@ export function Obligations({ scopeFundId }: { scopeFundId?: string }) {
         Obligations
       </SectionTitle>
 
-      {scopeName && (
-        <div className="animate-pop-in mb-3 inline-flex items-center gap-2 rounded-full border border-ember/30 bg-ember/[0.06] px-3 py-1 text-xs font-medium text-ember">
-          <span className="h-1.5 w-1.5 rounded-full bg-ember" />
-          Scoped to {scopeName}
-        </div>
-      )}
+      <div className="mb-3 flex items-center gap-1.5 text-xs">
+        <span className="mr-1 text-fog">Search</span>
+        <button
+          onClick={() => setScope('all')}
+          className={`rounded-full px-3 py-1 font-medium transition-colors ${scope === 'all' ? 'bg-bone text-page' : 'bg-black/[0.05] text-fog hover:text-bone'}`}
+        >
+          all funds
+        </button>
+        <button
+          onClick={() => setScope('fund')}
+          className={`rounded-full px-3 py-1 font-medium transition-colors ${scope === 'fund' ? 'bg-bone text-page' : 'bg-black/[0.05] text-fog hover:text-bone'}`}
+        >
+          {ctxFundName(ctx).replace(', L.P.', '')} only
+        </button>
+      </div>
       <div className="flex gap-3">
         <input
           value={question}
@@ -113,7 +117,7 @@ export function Obligations({ scopeFundId }: { scopeFundId?: string }) {
                   {n}
                 </span>
               ))}
-              <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[10px] text-fog tabular-nums">
+              <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-[10px] text-fog tabular-nums" title="Every quote was checked word-for-word against the document on file. A full count means every citation is really there.">
                 <span className={`h-1.5 w-1.5 rounded-full ${answer.citationsVerified.verified === answer.citationsVerified.total ? 'bg-verdant' : 'bg-warn'}`} />
                 {answer.citationsVerified.verified}/{answer.citationsVerified.total} citations verified
               </span>
@@ -165,7 +169,7 @@ export function Obligations({ scopeFundId }: { scopeFundId?: string }) {
             ))}
           </select>
           <Button onClick={extract} busy={extractBusy} disabled={!extractDoc}>
-            Extract
+            Pull duties
           </Button>
         </div>
         {extractBusy && <ThinkingCard label="Reading the document" />}

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { downloadDocx, get, post, usd, type Citation, type Fund } from '../api.js';
+import { useState } from 'react';
+import { downloadDocx, post, usd, type Citation } from '../api.js';
+import { useFund } from '../fund-context.js';
 import { SectionTitle, Button, CitationChip, ErrorNote, ThinkingCard } from '../components.js';
 
 interface Compendium {
@@ -27,24 +28,11 @@ interface Compendium {
 }
 
 export function Mfn() {
-  const [funds, setFunds] = useState<Fund[]>([]);
-  const [fundId, setFundId] = useState('');
+  const { fundId } = useFund();
   const [deliveryDate, setDeliveryDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Compendium | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    get<Fund[]>('/funds')
-      .then((all) => {
-        setFunds(all);
-        // reconcile with what's actually on file — never a hardwired seed id
-        setFundId((cur) =>
-          cur && all.some((f) => f.id === cur) ? cur : (all.find((f) => f.id === 'fund-2') ?? all[0])?.id ?? '',
-        );
-      })
-      .catch(() => {});
-  }, []);
 
   const build = async () => {
     setBusy(true);
@@ -71,16 +59,6 @@ export function Mfn() {
       </SectionTitle>
 
       <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="mb-1.5 block text-xs font-medium text-fog">Fund</label>
-          <select value={fundId} onChange={(e) => setFundId(e.target.value)} className="field py-2 text-sm">
-            {funds.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </div>
         <div>
           <label className="mb-1.5 block text-xs font-medium text-fog">Compendium delivery date (optional)</label>
           <input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className="field py-2 text-sm" />
@@ -162,7 +140,7 @@ export function Mfn() {
                 >
                   ⤓ Download .docx
                 </button>
-                <span className="font-mono text-[10px] text-fog tabular-nums">
+                <span className="font-mono text-[10px] text-fog tabular-nums" title="Every quote was checked word-for-word against the document on file. A full count means every citation is really there.">
                   {result.citationsVerified.verified}/{result.citationsVerified.total} citations verified
                 </span>
               </span>

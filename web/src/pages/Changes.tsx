@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { get, post, type Citation, type Fund } from '../api.js';
+import { get, post, type Citation } from '../api.js';
+import { useFund } from '../fund-context.js';
 import { SectionTitle, Button, CitationChip, CitationRow, ErrorNote, ThinkingCard } from '../components.js';
 
 interface Assessment {
@@ -20,7 +21,7 @@ interface DocRow {
 const SAMPLE_CHANGE = 'The managing partner wants to expand the geographic mandate to include emerging markets.';
 
 export function Changes() {
-  const [funds, setFunds] = useState<Fund[]>([]);
+  const { fundId, funds } = useFund();
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [documentId, setDocumentId] = useState('');
   const [provisions, setProvisions] = useState<Array<{ id: string; heading: string; text: string }>>([]);
@@ -31,21 +32,18 @@ export function Changes() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    get<Fund[]>('/funds').then(setFunds).catch(() => {});
     get<DocRow[]>('/documents')
       .then((all) => {
-        const candidates = all.filter((d) => d.type !== 'term_sheet');
+        // the active fund's documents, plus the firm's model library
+        const candidates = all.filter(
+          (d) => d.type !== 'term_sheet' && (d.fund_id === fundId || d.status === 'model'),
+        );
         setDocs(candidates);
-        // prefer the seed working draft when present; otherwise any draft,
-        // otherwise whatever exists — never a hardwired id on a BYO workspace
-        const preferred =
-          candidates.find((d) => d.id === 'doc-f3-draft') ??
-          candidates.find((d) => d.status === 'draft') ??
-          candidates[0];
-        if (preferred) setDocumentId(preferred.id);
+        const preferred = candidates.find((d) => d.status === 'draft') ?? candidates[0];
+        setDocumentId(preferred?.id ?? '');
       })
       .catch(() => {});
-  }, []);
+  }, [fundId]);
 
   useEffect(() => {
     if (!documentId) {
@@ -152,7 +150,7 @@ export function Changes() {
           <div>
             <div className="mb-3 flex items-baseline justify-between">
               <h3 className="text-sm font-semibold text-bone">Menu of alternatives, most conservative first</h3>
-              <span className="font-mono text-[10px] text-fog tabular-nums">
+              <span className="font-mono text-[10px] text-fog tabular-nums" title="Every quote was checked word-for-word against the document on file. A full count means every citation is really there.">
                 {result.citationsVerified.verified}/{result.citationsVerified.total} citations verified
               </span>
             </div>

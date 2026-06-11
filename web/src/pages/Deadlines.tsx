@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { get, post, type Citation, type Fund } from '../api.js';
+import { get, post, type Citation } from '../api.js';
+import { fundName as ctxFundName, useFund } from '../fund-context.js';
 import { SectionTitle, Button, CitationChip, ErrorNote, ThinkingCard } from '../components.js';
 
 interface Deadline {
@@ -84,7 +85,7 @@ function EmailDraft({ email }: { email: Email }) {
         {email.citations.map((c, i) => (
           <CitationChip key={i} citation={c} />
         ))}
-        <span className="ml-auto font-mono text-[10px] text-fog tabular-nums">
+        <span className="ml-auto font-mono text-[10px] text-fog tabular-nums" title="Every quote was checked word-for-word against the document on file. A full count means every citation is really there.">
           {email.citationsVerified.verified}/{email.citationsVerified.total} verified
         </span>
       </div>
@@ -93,8 +94,9 @@ function EmailDraft({ email }: { email: Email }) {
 }
 
 export function Deadlines() {
-  const [funds, setFunds] = useState<Fund[]>([]);
-  const [fundId, setFundId] = useState('');
+  const ctx = useFund();
+  const [scope, setScope] = useState<'all' | 'fund'>('all');
+  const fundId = scope === 'fund' ? ctx.fundId : '';
   const [withinDays, setWithinDays] = useState(180);
   const [deadlines, setDeadlines] = useState<Deadline[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -107,10 +109,6 @@ export function Deadlines() {
 
   const [emailBusy, setEmailBusy] = useState<string | null>(null);
   const [emails, setEmails] = useState<Record<string, Email>>({});
-
-  useEffect(() => {
-    get<Fund[]>('/funds').then(setFunds).catch(() => {});
-  }, []);
 
   useEffect(() => {
     let stale = false;
@@ -183,14 +181,20 @@ export function Deadlines() {
       </SectionTitle>
 
       <div className="mb-8 flex flex-wrap items-center gap-3">
-        <select value={fundId} onChange={(e) => setFundId(e.target.value)} className="field py-2 text-sm">
-          <option value="">All engagements</option>
-          {funds.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-1.5 text-xs">
+          <button
+            onClick={() => setScope('all')}
+            className={`rounded-full px-3 py-1.5 font-medium transition-colors ${scope === 'all' ? 'bg-bone text-page' : 'bg-black/[0.05] text-fog hover:text-bone'}`}
+          >
+            All funds
+          </button>
+          <button
+            onClick={() => setScope('fund')}
+            className={`rounded-full px-3 py-1.5 font-medium transition-colors ${scope === 'fund' ? 'bg-bone text-page' : 'bg-black/[0.05] text-fog hover:text-bone'}`}
+          >
+            {ctxFundName(ctx).replace(', L.P.', '')} only
+          </button>
+        </div>
         <select value={withinDays} onChange={(e) => setWithinDays(Number(e.target.value))} className="field py-2 text-sm">
           <option value={90}>Next 90 days</option>
           <option value={180}>Next 180 days</option>
