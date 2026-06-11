@@ -59,6 +59,13 @@ export function WorkspaceSwitcher() {
     load();
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
   const act = async (path: string, body?: unknown) => {
     setError(null);
     const res = await fetch(`/api${path}`, {
@@ -79,7 +86,7 @@ export function WorkspaceSwitcher() {
     <span className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="btn-ghost max-w-52"
+        className="btn-ghost max-w-72 py-2 text-[13px]"
         title={`${active?.name ?? 'Client file'}. Client files are separate, walled-off databases; only the open one is readable`}
       >
         <span className="text-fog">⊟</span>
@@ -87,10 +94,27 @@ export function WorkspaceSwitcher() {
         <span className="text-fog">▾</span>
       </button>
       {open && (
+        <button
+          aria-label="Close"
+          tabIndex={-1}
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-30 cursor-default"
+        />
+      )}
+      {open && (
         <div className="animate-pop-in absolute right-0 top-full z-40 mt-2 w-80 rounded-2xl border border-black/[0.08] bg-surface p-3 shadow-[0_2px_6px_rgba(27,26,24,0.06),0_16px_40px_rgba(27,26,24,0.14),0_48px_120px_rgba(27,26,24,0.2)]">
-          <p className="px-2 pb-2 pt-1 text-[11px] leading-relaxed text-fog">
-            Each client file is a separate, walled-off database; an ethical wall by construction. Only the open one is readable.
-          </p>
+          <div className="flex items-start gap-2">
+            <p className="flex-1 px-2 pb-2 pt-1 text-[11px] leading-relaxed text-fog">
+              Each client file is a separate, walled-off database; an ethical wall by construction. Only the open one is readable.
+            </p>
+            <button
+              onClick={() => setOpen(false)}
+              aria-label="Close"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/[0.05] text-xs text-fog transition-all hover:rotate-90 hover:bg-black/10 hover:text-bone"
+            >
+              ✕
+            </button>
+          </div>
           {workspaces.map((w) => (
             <div key={w.id} className="flex items-center gap-2 rounded-xl px-2 py-1.5 text-xs hover:bg-black/[0.03]">
               <button

@@ -161,7 +161,7 @@ export default function App() {
               <select
                 value={fundId}
                 onChange={(e) => setFundId(e.target.value)}
-                className="field max-w-44 py-1.5 text-xs"
+                className="field max-w-72 py-2 text-[13px]"
                 title="The fund every page acts on. Pick it once; Drafting, Comments, Side Letters and the rest all follow."
                 aria-label="Active fund"
               >
