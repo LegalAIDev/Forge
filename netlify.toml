@@ -1,0 +1,39 @@
+# Netlify configuration — Forge web UI (frontend only).
+#
+# Netlify hosts the static React/Vite app in `web/`. It does NOT run Forge's
+# backend (Fastify + better-sqlite3 + local Ollama + SSE + OCR), which needs a
+# persistent server. Deploy that separately (a VM/container) and point the
+# frontend at it via one of the two options below.
+#
+# See docs/deploy-netlify.md for the full walkthrough.
+
+[build]
+  base = "web"
+  command = "npm install && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# ── Connecting the API ──────────────────────────────────────────────────────
+# Option A (same-origin proxy, no CORS): uncomment the block below and replace
+# YOUR-BACKEND-HOST with the deployed backend's host. The frontend keeps calling
+# relative "/api/*" and Netlify forwards those requests to the backend.
+#
+# [[redirects]]
+#   from = "/api/*"
+#   to = "https://YOUR-BACKEND-HOST/api/:splat"
+#   status = 200
+#   force = true
+#
+# Option B (cross-origin): leave this commented and instead set the build env
+# var VITE_API_BASE_URL = "https://YOUR-BACKEND-HOST" in the Netlify UI. The
+# backend must then allow this site's origin via CORS.
+
+# ── SPA fallback ────────────────────────────────────────────────────────────
+# Serve index.html for any non-asset route so client-side navigation works.
+# Keep this LAST so the /api/* proxy (when enabled) matches first.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

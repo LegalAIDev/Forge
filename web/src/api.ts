@@ -1,4 +1,13 @@
-const BASE = '/api';
+// Base for all API calls. Empty by default → same-origin "/api", which works
+// both with the Vite dev proxy and with a Netlify "/api/*" redirect proxy.
+// Set VITE_API_BASE_URL to a full backend origin (e.g. https://api.example.com)
+// at build time to call a cross-origin backend directly — the backend must
+// then allow this site's origin via CORS.
+const API_ROOT = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+export const BASE = `${API_ROOT}/api`;
+
+/** Absolute (or same-origin) URL for an API path, e.g. apiUrl('/funds'). */
+export const apiUrl = (path: string): string => `${BASE}${path}`;
 
 export async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
