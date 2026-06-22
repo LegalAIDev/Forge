@@ -2,8 +2,8 @@
  * Side letter generation — three complete drafts following the reuse
  * hierarchy: (1) exact model language, (2) adapted precedent, (3) fresh
  * drafting. Retrieval scores computed locally decide which tier each agreed
- * term naturally supports; Fable 5 assembles the three drafts with
- * per-clause tier annotations and citations.
+ * term naturally supports; the frontier model assembles the three drafts
+ * with per-clause tier annotations and citations.
  */
 
 import { z } from 'zod';

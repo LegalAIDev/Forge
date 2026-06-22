@@ -120,7 +120,7 @@ The full demo arc, each stage thin but real:
 
 ## The two models
 
-- **Frontier:** `claude-fable-5` (Anthropic) does the drafting and
+- **Frontier:** `claude-opus-4-8` (Anthropic) does the drafting and
   reasoning. Structured output only; every response is schema-validated.
 - **Local** (Ollama, on your machine) plays two roles:
   - **Privacy gateway.** Before any text leaves the machine, fund and
@@ -204,8 +204,8 @@ src/
   privacy/anonymize.ts  reversible placeholder anonymizer (regex, local)
   ai/ollama.ts          local model client (NER chat + embeddings + health)
   ai/gateway.ts         the privacy gateway; nothing leaves unsanitized
-  ai/claude.ts          the ONE place Fable 5 is called: sanitize, call,
-                        de-anonymize, verify citations, audit
+  ai/claude.ts          the ONE place the frontier model is called: sanitize,
+                        call, de-anonymize, verify citations, audit
   search/               hybrid retrieval (BM25 + cosine, degrades to BM25)
   documents/parser.ts   parse uploaded PDF/DOCX/MD/TXT into citable provisions
   documents/ocr.ts      on-device OCR fallback for scanned PDFs (pdf.js + Tesseract)

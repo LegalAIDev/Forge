@@ -18,7 +18,7 @@ export const config = {
     get apiKey(): string {
       return process.env.ANTHROPIC_API_KEY ?? '';
     },
-    model: process.env.FORGE_MODEL ?? 'claude-fable-5',
+    model: process.env.FORGE_MODEL ?? 'claude-opus-4-8',
   },
 
   privacy: {

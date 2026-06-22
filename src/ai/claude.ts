@@ -1,13 +1,15 @@
 /**
- * The ONE place Fable 5 is called. Every engine module goes through
- * callStructured(), so the privacy gateway, citation verification and the
- * audit log are unskippable.
+ * The ONE place the frontier model is called. Every engine module goes
+ * through callStructured(), so the privacy gateway, citation verification
+ * and the audit log are unskippable.
  *
- * Sequence: sanitize → claude-fable-5 (structured output) → de-anonymize →
+ * Sequence: sanitize → claude-opus-4-8 (structured output) → de-anonymize →
  * verify citations → write ai_calls audit row.
  *
- * Fable 5 rules baked in here: no temperature/top_p/top_k, no `thinking`
- * param at all, structured output via messages.parse + output_config.format.
+ * Call rules baked in here: no temperature/top_p/top_k (removed on the
+ * Opus 4.x family — sending them 400s), no `thinking` param (omitted; the
+ * model runs without extended thinking, depth controlled by output_config
+ * effort), structured output via messages.parse + output_config.format.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -113,7 +115,7 @@ export async function callStructured<T>(opts: CallOptions<T>): Promise<CallResul
   };
 
   try {
-    // 2. Fable 5 sees only sanitized text.
+    // 2. The model sees only sanitized text.
     const response = await getClient().messages.parse({
       model: config.anthropic.model,
       max_tokens: opts.maxTokens ?? 8_000,
@@ -127,7 +129,7 @@ export async function callStructured<T>(opts: CallOptions<T>): Promise<CallResul
 
     const parsed = response.parsed_output;
     if (parsed === null || parsed === undefined) {
-      throw new Error(`Fable 5 returned unparseable output (stop_reason: ${response.stop_reason})`);
+      throw new Error(`Model returned unparseable output (stop_reason: ${response.stop_reason})`);
     }
 
     // 3. Restore originals locally.
