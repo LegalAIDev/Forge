@@ -7,10 +7,14 @@ verbatim, and every client name is masked on your machine before anything
 goes out, so a lawyer can actually check it.**
 
 <p align="center">
-  <img src="docs/demo.gif" alt="A real run on the seeded demo fund: a plain-English question to the obligations register returns an urgency-ordered answer where every duty cites the clause that created it (10/10 verified), and the privacy panel shows exactly what left the machine." width="820">
+  <img src="docs/screenshot-answer.png" alt="The obligations register answering a plain-English question about a sub-Saharan Africa deal: an urgency-ordered answer where every duty cites the clause that created it, with 8/8 citations verified." width="860">
+  <br><sub>Ask the obligations register in plain English; every line of the answer quotes the clause that created the duty, checked word-for-word against the document on file. A real run on the seeded demo fund.</sub>
 </p>
 
-<p align="center"><sub>One real run on the seeded demo fund — a plain-English question, an answer where every line quotes the clause that created the duty (10/10 verified), and the on-device panel showing exactly what left the machine. Nothing staged; this is the app.</sub></p>
+<p align="center">
+  <img src="docs/screenshot-privacy.png" alt="The 'what left your machine' panel: a per-call log of the exact sanitized payload, showing how many names were masked on-device, whether the local NER pass ran, and token counts." width="860">
+  <br><sub>“What left your machine”: the exact sanitized payload of every frontier call. Fund and investor names are masked on-device before anything is sent, and restored locally on the way back.</sub>
+</p>
 
 It's inspired by the Kirkland & Ellis / Palantir "Fund Formation Engine"
 demo. I'm not claiming feature parity — I have no idea what they're actually
