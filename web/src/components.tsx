@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { get, usd, type Citation, type Health, type RunEvent } from './api.js';
+import { apiUrl, get, usd, type Citation, type Health, type RunEvent } from './api.js';
 
 // ── CountUp — numbers that arrive, Apple-style ──────────────────────────
 
@@ -47,7 +47,7 @@ export function WorkspaceSwitcher() {
   const [error, setError] = useState<string | null>(null);
 
   const load = () =>
-    fetch('/api/workspaces')
+    fetch(apiUrl('/workspaces'))
       .then((r) => r.json())
       .then((d: { activeId: string; workspaces: WorkspaceMeta[] }) => {
         setActiveId(d.activeId);
@@ -68,7 +68,7 @@ export function WorkspaceSwitcher() {
 
   const act = async (path: string, body?: unknown) => {
     setError(null);
-    const res = await fetch(`/api${path}`, {
+    const res = await fetch(apiUrl(path), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,

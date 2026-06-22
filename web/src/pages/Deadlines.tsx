@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { get, post, type Citation } from '../api.js';
+import { apiUrl, get, post, type Citation } from '../api.js';
 import { fundName as ctxFundName, useFund } from '../fund-context.js';
 import { SectionTitle, Button, CitationChip, ErrorNote, ThinkingCard } from '../components.js';
 
@@ -162,7 +162,7 @@ export function Deadlines() {
     }
   };
 
-  const icsHref = `/api/deadlines.ics?withinDays=365${fundId ? `&fundId=${fundId}` : ''}`;
+  const icsHref = apiUrl(`/deadlines.ics?withinDays=365${fundId ? `&fundId=${fundId}` : ''}`);
 
   // group by month for the timeline feel
   const byMonth = deadlines.reduce<Record<string, Deadline[]>>((acc, d) => {
